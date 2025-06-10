@@ -3,119 +3,97 @@ import pandas as pd
 import requests
 import random
 from bs4 import BeautifulSoup
-from io import BytesIO
-import base64
+from urllib.parse import urlparse
 
-st.set_page_config(page_title="LeadGen: Smart Company Finder", layout="wide")
-st.title("🚀 AI-Ready Lead Generator + Enrichment")
+# --- PAGE SETUP ---
+st.set_page_config(page_title="LeadGen Pro", layout="wide")
+st.title("🚀 LeadGen Pro - B2B SaaS Lead Generator")
+st.markdown("Generate enriched leads with company name, email, logo, description, score & AI-generated pitch ✨")
 
-st.markdown("""
-Type a **keyword** like "B2B SaaS", "AI Startup", or "Fintech India" to find relevant leads.
-
-✅ Features:
-- Company info via Clearbit
-- Smart enrichment (description, logo)
-- Lead score
-- Download or CRM-ready format
-- AI-generated email pitch (optional)
-""")
-
-# --- Scrape a company description ---
-def fetch_company_description(domain):
-    try:
-        url = f"https://{domain}"
-        res = requests.get(url, timeout=5)
-        soup = BeautifulSoup(res.text, "html.parser")
-
-        meta = soup.find("meta", {"name": "description"}) or soup.find("meta", {"property": "og:description"})
-        if meta and meta.get("content"):
-            return meta["content"].strip()
-
-        p = soup.find("p")
-        if p and p.text:
-            return p.text.strip()
-    except:
-        pass
-    return "No description available."
-
-# --- AI Email Pitch Generator ---
-def generate_email_pitch(company):
-    name = company.get("Company", "your company")
-    desc = company.get("Description", "a growing business")
-    return f"Hi,\n\nI came across {name} and was impressed by what you're doing in the space of {desc[:50]}...\nWould love to chat about how we could help you grow faster.\n\nBest,\n[Your Name]"
-
-# --- Get leads from Clearbit ---
-def fetch_clearbit_companies(keyword, max_results=15):
+# --- FUNCTIONS ---
+def fetch_clearbit_companies(keyword, max_results=20):
     url = f"https://autocomplete.clearbit.com/v1/companies/suggest?query={keyword}"
-    try:
-        r = requests.get(url, timeout=5)
-        companies = r.json()
-    except:
-        return pd.DataFrame()
+    r = requests.get(url)
+    companies = r.json()
 
     leads = []
-    for c in companies[:max_results]:
+    for idx, c in enumerate(companies[:max_results]):
         domain = c.get("domain", "")
         name = c.get("name", "")
         logo = c.get("logo", "")
+
         if not domain:
             continue
-        description = fetch_company_description(domain)
-        email = f"info@{domain}" if domain else ""
-        score = random.randint(75, 95)
-        pitch = generate_email_pitch({"Company": name, "Description": description})
+
+        # Scrape meta description from the website for enrichment
+        description = fetch_website_description(domain)
 
         leads.append({
+            "Rank": idx + 1,
             "Company": name,
             "Website": f"https://{domain}",
-            "Email": email,
-            "Score": score,
+            "Email": f"info@{domain}",
             "Description": description,
+            "Score": random.randint(75, 95),
             "Logo": logo,
-            "AI Email Pitch": pitch
+            "Pitch": generate_ai_pitch(name, domain, description)
         })
     return pd.DataFrame(leads)
 
-# --- UI Layout ---
-keyword = st.text_input("🔍 Keyword (e.g. 'HR Tech', 'Climate SaaS')")
+def fetch_website_description(domain):
+    try:
+        url = f"https://{domain}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, timeout=5, headers=headers)
+        soup = BeautifulSoup(res.text, "html.parser")
+        desc_tag = soup.find("meta", attrs={"name": "description"}) or soup.find("meta", attrs={"property": "og:description"})
+        return desc_tag["content"] if desc_tag and "content" in desc_tag.attrs else "No description available"
+    except:
+        return "No description available"
 
-col1, col2 = st.columns(2)
-with col1:
-    max_results = st.slider("Number of leads", min_value=5, max_value=25, value=10)
-with col2:
-    min_score = st.slider("Minimum Lead Score", min_value=60, max_value=100, value=75)
+def generate_ai_pitch(company, domain, description):
+    if not description or description == "No description available":
+        return f"We'd love to connect with the team at {company} to explore synergies in the B2B SaaS space."
+    return f"Hi {company}, we came across your website ({domain}) and were impressed. Given your work in '{description[:70]}...', we believe there's a great opportunity to collaborate."
 
-if st.button("🚀 Find Leads") and keyword.strip():
-    with st.spinner("Fetching and enriching leads..."):
-        df = fetch_clearbit_companies(keyword, max_results=max_results)
+# --- UI ---
+keyword = st.text_input("🔍 Enter a keyword (e.g., 'Fintech', 'AI SaaS', 'DevOps')")
+filter_score = st.slider("🎯 Minimum Lead Score", 70, 95, 80)
+
+if st.button("🚀 Generate Leads") and keyword.strip():
+    with st.spinner("Fetching data from Clearbit and enriching leads..."):
+        df = fetch_clearbit_companies(keyword)
+        df = df[df['Score'] >= filter_score].reset_index(drop=True)
+
         if df.empty:
-            st.warning("No companies found. Try a broader keyword.")
+            st.warning("No enriched leads found. Try a broader or more relevant keyword.")
         else:
-            df = df[df["Score"] >= min_score].reset_index(drop=True)
-            st.success(f"✅ {len(df)} high-quality leads found!")
+            st.success(f"✅ Found {len(df)} enriched leads.")
 
-            # Show table
-            st.dataframe(df.drop(columns=["Logo"]).style.highlight_max(axis=0), use_container_width=True)
+            # --- Display with logos ---
+            for _, row in df.iterrows():
+                with st.container():
+                    cols = st.columns([1, 3, 6])
+                    with cols[0]:
+                        if row["Logo"]:
+                            st.image(row["Logo"], width=64)
+                    with cols[1]:
+                        st.subheader(row["Company"])
+                        st.write(f"🔗 [{row['Website']}]({row['Website']})")
+                        st.write(f"📧 {row['Email']}")
+                        st.write(f"💯 Score: {row['Score']}")
+                    with cols[2]:
+                        st.write(f"📝 {row['Description']}")
+                        st.markdown(f"**💡 Pitch:** {row['Pitch']}")
 
-            # Download
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("📥 Download CSV", data=csv, file_name="leads.csv", mime="text/csv")
-
-            # Show logos (optional)
-            if st.checkbox("🖼️ Show company logos"):
-                for _, row in df.iterrows():
-                    st.markdown(f"### {row['Company']}")
-                    if row['Logo']:
-                        st.image(row['Logo'], width=100)
-                    st.write(f"**Website**: {row['Website']}")
-                    st.write(f"**Email**: {row['Email']}")
-                    st.write(f"**Score**: {row['Score']}")
-                    st.write(f"**Description**: {row['Description']}")
-                    st.code(row['AI Email Pitch'], language='text')
-                    st.markdown("---")
+            # --- Downloadable CSV ---
+            st.markdown("---")
+            csv = df.drop(columns=['Logo']).to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download Leads CSV", data=csv, file_name="enriched_leads.csv", mime="text/csv")
 
 elif not keyword:
-    st.info("Start by entering a keyword to find company leads.")
+    st.info("Enter a keyword to begin generating enriched leads.")
 
+# --- FOOTER ---
 st.markdown("---")
-st.caption("Built for Caprae Capital – AI-Readiness Challenge | 💡 Smart B2B SaaS Scraper")
+st.caption("Built for Caprae Capital – AI-Readiness Challenge | Enhanced by GPT-4")

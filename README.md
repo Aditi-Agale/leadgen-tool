@@ -61,12 +61,11 @@ streamlit run app.py
 ## 📁 File Structure
 ```bash
 leadgen-pro/
-├── app.py                 # Main Streamlit app
-├── requirements.txt       # Dependencies
-├── README.md              # This file
-├── assets/                # Images for README
-│   ├── list-view.png
-│   └── table-view.png
+├──venv
+├── app.py            
+├── requirements.txt    
+├── README.md           
+
 ```
 📜 License
 

@@ -20,13 +20,6 @@
 
 ---
 
-## 📸 Demo Screenshots
-
-| List View | Table View |
-|-----------|------------|
-| ![List View](assets/list-view.png) | ![Table View](assets/table-view.png) |
-
----
 
 ## 🛠️ Installation
 
